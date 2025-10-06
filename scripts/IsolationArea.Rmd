@@ -1,0 +1,204 @@
+---
+title: "GLM Isolation Analysis"
+output: html_notebook
+---
+
+first you must install the packages
+```{r}
+install.packages("boot")
+install.packages("GGally")
+install.packages("tidyverse")
+install.packages("performance")
+install.packages("patchwork")
+```
+
+
+```{r}
+library(boot)
+library(GGally)
+library(tidyverse)
+library(performance)
+library(patchwork)
+
+
+```
+
+
+
+first we have to insert the data isolation, this one has a binomial response variable (meaning an upper limit of 1 and a lower limit of 0, its either or. no inbetween)
+
+```{r}
+
+df_iso <- read_csv("isolation.csv")
+
+head(df_iso)
+
+
+```
+
+we have three variables here. Incidence, area and isolation. lets remember the steps here
+
+first i have to load the dataset and take a look at it, any outliers? lets try plotting it
+
+
+```{r}
+
+plot1 <- df_iso %>% 
+  ggplot(aes(x=AREA, y= INCIDENCE))+
+  geom_point(alpha = 0.5)
+
+plot2 <- df_iso %>% 
+  ggplot(aes(x=ISOLATION, y = INCIDENCE))+
+  geom_point(alpha = 0.5)
+
+print(plot1+plot2)
+
+
+```
+
+
+well from what ADF(any damn fool) can see. it would seem that the bigger the area, the more birds. and the higher the isolation, the less birds. interesting. 
+
+we would assume that the area to incidence would a positive coefficient
+and isolation would be negative.
+
+lets check the models start the analysis. we'll be making a simple one and a complex one to compare later. (one with interaction and one without)
+
+```{r}
+
+isomod.1 <- glm(INCIDENCE ~ AREA + ISOLATION + AREA:ISOLATION,
+                data=df_iso, family = binomial)
+isomod.2 <- glm(INCIDENCE ~ AREA + ISOLATION,
+                data=df_iso, family = binomial)
+
+summary(isomod.1)
+
+```
+
+the residual deviance divided by the DFs. gives us a value of about 0.6. which is lower than 2 and higher than 0.5, meaning we dont have to worry about over and under dispersion. so we can continue without any changes to the error structure
+
+
+
+```{r}
+check_model(isomod.1,
+            check = "vif")
+```
+
+we have some very high collinearity here. we might have to simplify, lets check if a simpler model can explain better by using a chi test
+
+
+```{r}
+anova(isomod.1,
+      isomod.2,
+      test= "Chi")
+
+
+```
+
+looking at the p value we can see the simpler model is significantly better! (its above 0.05). meaning we should not use the complex model in this study.
+
+```{r}
+summary(isomod.2)
+
+```
+again the residual degrees of freedom is 0.6 even with the simpler model. we do not have to make any changes to the error structure
+
+```{r}
+check_model(isomod.2,
+            check = "vif")
+```
+heyy would you look at that, there is no collinearity here. this proves to us that the simpler model is definitely the way to go here.
+
+
+lets make some prediction matrices now and start thinking about plotting for both area and isolation
+
+```{r}
+
+NEWISOLATION <- crossing(ISOLATION = seq(min(df_iso$ISOLATION),
+                                       max(df_iso$ISOLATION), 
+                                       length = 100),
+                         AREA = mean(df_iso$AREA))
+
+NEWAREA <- crossing(AREA = seq(min(df_iso$AREA),
+                              max(df_iso$AREA), 
+                              length = 100),
+                    ISOLATION  = mean(df_iso$ISOLATION))
+
+# crossing works better than tibble here as we need both AREA and ISOLATION in the NEW dataframe for the prediction to work, otherwise the prediciton will look for ISOLATION when predicting AREA and wise versa. this way the other variable stays constant (Since we're just taking the mean of it) when predicting. make sense?
+
+
+preds_isolation <- predict(isomod.1,
+                           newdata = NEWISOLATION,
+                           type = "link",
+                           se.fit = TRUE)
+
+preds_area <- predict(isomod.1,
+                           newdata = NEWAREA,
+                           type = "link",
+                           se.fit = TRUE)
+                    
+
+df_predsarea <- bind_cols(NEWAREA,
+                          as.tibble(preds_area))
+
+df_predsiso <- bind_cols(NEWISOLATION,
+                         as.tibble(preds_isolation))
+
+
+```
+
+
+OK now the hard part is done... lets start plotting these graphs and printing them together. using the inv.logit function to plot the probability lines themselves
+
+
+```{r}
+
+plot_iso <- df_predsiso %>% 
+  ggplot(aes(x= ISOLATION, y= inv.logit(fit)))+
+   geom_ribbon(aes(ymax = inv.logit(fit + 1.96 * se.fit),
+                  ymin = inv.logit(fit - 1.96 * se.fit)),
+              alpha = 0.3,
+              linetype = 0)+
+  geom_line()+
+  geom_point(data=df_iso, aes(y=INCIDENCE), alpha =0.5)+
+  theme_bw()+
+  labs(x= "Isolation km",
+       y= "Incidence of Birds")
+
+
+plot_area <- df_predsarea %>% 
+  ggplot(aes(x= AREA, y= inv.logit(fit)))+
+   geom_ribbon(aes(ymax = inv.logit(fit + 1.96 * se.fit),
+                  ymin = inv.logit(fit - 1.96 * se.fit)),
+              alpha = 0.3,
+              linetype = 0)+
+  geom_line()+
+  geom_point(data=df_iso, aes(y=INCIDENCE), alpha =0.5)+
+  theme_bw()+
+  labs(x= expression(paste("Area km"^"2")),
+       y= "Incidence of Birds")
+
+print(plot_iso+plot_area)
+
+
+```
+
+well done. beautiful graph. lets try to describe them
+
+"We found a significantly higher probability of finding birds on Islands that are both less isolated and have a larger surface area.
+Islands that are more isolated saw a significant decrease in the probability of finding birds(), and islands which were larger, saw a significant increase in the probability in finding birds.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
