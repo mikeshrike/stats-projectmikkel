@@ -29,7 +29,11 @@ first we have to insert the data isolation, this one has a binomial response var
 
 ```{r}
 
-df_iso <- read_csv("isolation.csv")
+df_iso <- read_csv("isolation.csv") 
+
+#or if you directly imported the dataset without having the CSV file the same folder as the script, you can also do this second one, just remove the #
+
+# df_iso <- isolation
 
 head(df_iso)
 
@@ -178,7 +182,9 @@ plot_area <- df_predsarea %>%
   labs(x= expression(paste("Area km"^"2")),
        y= "Incidence of Birds")
 
-print(plot_iso+plot_area)
+plotcombined <- plot_iso + plot_area 
+
+print
 
 
 ```
